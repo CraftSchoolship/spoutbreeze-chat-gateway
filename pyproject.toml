@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "chat-gateway-microservice"
+version = "0.1.0"
+description = "A microservice that abstracts chat connections for multiple platforms using a unified interface and a pub/sub layer."
+authors = ["Firas"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+fastapi = "^0.68.0"
+uvicorn = "^0.15.0"
+httpx = "^0.21.0"
+redis = "^4.0.0"
+pydantic = "^1.8.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.env
+.venv
+env/
+venv/
+ENV/
+
+# FastAPI / Uvicorn
+*.log
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+
+# Unit test / coverage reports
+htmlcov/
+.coverage
+.coverage.*
+.cache
+pytest_cache/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local environment files
+.env*
+.env.local
+.env.dev
+.env.prod
+
+# Docker
+**/__pycache__/
+**/*.pyc
+docker-compose.override.yml
