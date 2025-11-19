@@ -16,4 +16,4 @@ COPY src/ ./src/
 ENV PYTHONUNBUFFERED=1
 
 # Command to run the application
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8800"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8081"]
