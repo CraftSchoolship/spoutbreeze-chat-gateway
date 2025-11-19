@@ -15,17 +15,19 @@ logger = get_logger("TwitchAdapter")
 
 
 class TwitchIRCClient:
-    def __init__(self, user_id: str):
+    def __init__(self, user_id: str, access_token: str):
         self.settings = get_settings()
         self.user_id = user_id
+        self.access_token = access_token
         self.server = "irc.chat.twitch.tv"
         self.port = 6697
-        self.nickname = "divinehope1"  # Can be any name for read-only
+        self.nickname = "divinehope1"
         self.channel = "#divinehope1"
         self.reader = None
         self.writer = None
         self.token = None
         self.is_connected: bool = False
+        self.is_ready: bool = False  # NEW: Track if fully joined and ready
 
     def _get_public_ssl_context(self):
         """Create SSL context for Twitch"""
@@ -55,7 +57,6 @@ class TwitchIRCClient:
             user_uuid = str(uuid.UUID(self.user_id))
 
             async for db in get_db():
-                # Use raw SQL to avoid importing backend models
                 query = text("""
                     SELECT access_token, expires_at 
                     FROM twitch_tokens 
@@ -71,7 +72,7 @@ class TwitchIRCClient:
                 
                 if row:
                     logger.info(f"[TwitchAdapter] Token loaded for user {self.user_id}")
-                    return row[0]  # access_token
+                    return row[0]
                 else:
                     logger.error(f"[TwitchAdapter] No valid token for user {self.user_id}")
                     raise Exception("No valid token")
@@ -80,94 +81,11 @@ class TwitchIRCClient:
             logger.error(f"[TwitchAdapter] Token fetch error: {e}")
             raise
 
-    async def refresh_token_if_needed(self) -> bool:
-        """Refresh token if expiring soon"""
-        try:
-            user_uuid = str(uuid.UUID(self.user_id))
-
-            async for db in get_db():
-                query = text("""
-                    SELECT access_token, refresh_token, expires_at 
-                    FROM twitch_tokens 
-                    WHERE user_id = :user_id 
-                    AND is_active = true
-                    ORDER BY created_at DESC 
-                    LIMIT 1
-                """)
-                
-                result = await db.execute(query, {"user_id": user_uuid})
-                row = result.first()
-
-                if not row:
-                    return False
-
-                expires_at = row[2]
-                expires_soon = datetime.now() + timedelta(minutes=5)
-                
-                if expires_at <= expires_soon:
-                    refresh_token = row[1]
-                    if refresh_token:
-                        new_token_data = await self._refresh_access_token(refresh_token)
-                        if new_token_data:
-                            new_expires_at = datetime.now() + timedelta(seconds=new_token_data.get("expires_in", 3600))
-                            
-                            update_query = text("""
-                                UPDATE twitch_tokens 
-                                SET access_token = :access_token,
-                                    expires_at = :expires_at,
-                                    refresh_token = :refresh_token
-                                WHERE user_id = :user_id 
-                                AND is_active = true
-                            """)
-                            
-                            await db.execute(update_query, {
-                                "access_token": new_token_data["access_token"],
-                                "expires_at": new_expires_at,
-                                "refresh_token": new_token_data.get("refresh_token", refresh_token),
-                                "user_id": user_uuid
-                            })
-                            await db.commit()
-                            logger.info(f"[TwitchAdapter] Token refreshed for user {self.user_id}")
-                            return True
-                    
-                    # Token expired and can't refresh
-                    deactivate_query = text("UPDATE twitch_tokens SET is_active = false WHERE user_id = :user_id")
-                    await db.execute(deactivate_query, {"user_id": user_uuid})
-                    await db.commit()
-                    return False
-                break
-        except Exception as e:
-            logger.error(f"[TwitchAdapter] Refresh error: {e}")
-        return False
-
-    async def _refresh_access_token(self, refresh_token: str) -> Optional[Dict[str, Any]]:
-        """Refresh token via Twitch OAuth"""
-        try:
-            ssl_context = self._get_public_ssl_context()
-            async with httpx.AsyncClient(verify=ssl_context) as client:
-                response = await client.post(
-                    "https://id.twitch.tv/oauth2/token",
-                    data={
-                        "client_id": self.settings.TWITCH_CLIENT_ID,
-                        "client_secret": self.settings.TWITCH_CLIENT_SECRET,
-                        "grant_type": "refresh_token",
-                        "refresh_token": refresh_token,
-                    },
-                )
-                if response.status_code == 200:
-                    return response.json()
-        except Exception as e:
-            logger.error(f"[TwitchAdapter] Token refresh failed: {e}")
-        return None
-
     async def connect(self):
         """Connect to Twitch IRC"""
         while True:
             try:
-                await self.refresh_token_if_needed()
-                self.token = await self.get_active_token()
-
-                if not self.token:
+                if not self.access_token:
                     logger.error("[TwitchAdapter] No token, retrying in 30s...")
                     await asyncio.sleep(30)
                     continue
@@ -177,16 +95,30 @@ class TwitchIRCClient:
                     self.server, self.port, ssl=ssl_context
                 )
 
-                self.writer.write(f"PASS oauth:{self.token}\r\n".encode())
+                # Request capabilities for better IRC features
+                self.writer.write(b"CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands\r\n")
+                self.writer.write(f"PASS oauth:{self.access_token}\r\n".encode())
                 self.writer.write(f"NICK {self.nickname}\r\n".encode())
+                await self.writer.drain()
+                
+                # Wait for server greeting
+                await asyncio.sleep(1)
+                
                 self.writer.write(f"JOIN {self.channel}\r\n".encode())
                 await self.writer.drain()
 
                 self.is_connected = True
                 logger.info(f"[TwitchAdapter] Connected to Twitch IRC for user {self.user_id}")
+                
+                # Wait for JOIN confirmation before marking as ready
+                await asyncio.sleep(2)
+                self.is_ready = True
+                logger.info(f"[TwitchAdapter] Ready to send messages in {self.channel}")
+                
                 await self.listen()
             except Exception as e:
                 self.is_connected = False
+                self.is_ready = False
                 logger.error(f"[TwitchAdapter] Connection error: {e}")
                 await asyncio.sleep(5)
 
@@ -197,6 +129,7 @@ class TwitchIRCClient:
                 line = await self.reader.readline()
                 if not line:
                     self.is_connected = False
+                    self.is_ready = False
                     raise ConnectionResetError("Stream closed")
                 msg = line.decode(errors="ignore").strip()
 
@@ -205,9 +138,15 @@ class TwitchIRCClient:
                     await self.writer.drain()
                     continue
 
+                # Check for successful JOIN
+                if f"JOIN {self.channel}" in msg and self.nickname in msg:
+                    self.is_ready = True
+                    logger.info(f"[TwitchAdapter] Successfully joined {self.channel}")
+
                 await self._handle_message(msg)
             except Exception as e:
                 self.is_connected = False
+                self.is_ready = False
                 logger.error(f"[TwitchAdapter] Listen error: {e}")
                 raise
 
@@ -234,10 +173,9 @@ class TwitchIRCClient:
 
                     logger.info(f"[TwitchAdapter] {username}: {msg_content}")
 
-                    # Only send to backend/gateway once:
                     async with httpx.AsyncClient() as client:
                         await client.post(
-                            "http://localhost:8800/messages/incoming",
+                            "http://localhost:8081/messages/incoming",
                             json={
                                 "platform": "twitch",
                                 "user_id": self.user_id,
@@ -251,11 +189,21 @@ class TwitchIRCClient:
 
     async def send_message(self, message: str):
         """Send message to Twitch chat"""
-        if self.writer:
+        if not self.is_ready:
+            logger.warning(f"[TwitchAdapter] Cannot send - not ready yet (connected={self.is_connected}, ready={self.is_ready})")
+            return
+            
+        if not self.writer:
+            logger.error(f"[TwitchAdapter] Cannot send - no writer")
+            return
+
+        try:
             full_message = f"PRIVMSG {self.channel} :{message}\r\n"
             self.writer.write(full_message.encode())
             await self.writer.drain()
-            logger.info(f"[TwitchAdapter] → {message}")
+            logger.info(f"[TwitchAdapter] ✅ Sent to {self.channel}: {message}")
+        except Exception as e:
+            logger.error(f"[TwitchAdapter] Send error: {e}")
 
     async def disconnect(self):
         """Gracefully disconnect"""
@@ -270,4 +218,5 @@ class TwitchIRCClient:
             self.reader = None
             self.writer = None
             self.is_connected = False
+            self.is_ready = False
         logger.info(f"[TwitchAdapter] Disconnected user {self.user_id}")

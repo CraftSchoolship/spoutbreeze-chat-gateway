@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # API settings
     API_PREFIX: str = "/api/v1"
     API_HOST: str = "0.0.0.0"
-    API_PORT: int = 8800
+    API_PORT: int = 8081
 
     # Logging
     LOG_LEVEL: str = "INFO"
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # Twitch settings
     TWITCH_CLIENT_ID: str
     TWITCH_CLIENT_SECRET: str
-    TWITCH_REDIRECT_URI: str = "http://localhost:8800/twitch/callback"
+    TWITCH_REDIRECT_URI: str = "http://localhost:8081/twitch/callback"
 
     # YouTube settings
     YOUTUBE_CLIENT_ID: str

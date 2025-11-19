@@ -380,7 +380,7 @@ class YouTubeChatClient:
                     async with httpx.AsyncClient(timeout=5.0) as client:
                         try:
                             await client.post(
-                                "http://localhost:8800/messages/incoming",
+                                "http://localhost:8081/messages/incoming",
                                 json={
                                     "platform": "youtube",
                                     "user_id": self.user_id,
