@@ -11,6 +11,7 @@ from src.core.logger import get_logger
 from src.core.db_session import get_db
 from src.schemas.chat import IncomingMessage
 from src.api.messages import receive_incoming_message
+from src.services.twitch_profile_service import get_twitch_channel_info
 
 logger = get_logger("TwitchAdapter")
 
@@ -22,13 +23,13 @@ class TwitchIRCClient:
         self.access_token = access_token
         self.server = "irc.chat.twitch.tv"
         self.port = 6697
-        self.nickname = "divinehope1"
-        self.channel = "#divinehope1"
+        self.nickname = None  # Will be fetched from Twitch API
+        self.channel = None  # Will be fetched from Twitch API
         self.reader = None
         self.writer = None
         self.token = None
         self.is_connected: bool = False
-        self.is_ready: bool = False  # NEW: Track if fully joined and ready
+        self.is_ready: bool = False
 
     def _get_public_ssl_context(self):
         """Create SSL context for Twitch"""
@@ -82,6 +83,22 @@ class TwitchIRCClient:
             logger.error(f"[TwitchAdapter] Token fetch error: {e}")
             raise
 
+    async def fetch_channel_info(self):
+        """Fetch nickname and channel from Twitch API"""
+        try:
+            channel_info = await get_twitch_channel_info(self.user_id, self.access_token)
+            if channel_info:
+                self.nickname = channel_info["nickname"]
+                self.channel = channel_info["channel"]
+                logger.info(f"[TwitchAdapter] Fetched channel info - nickname: {self.nickname}, channel: {self.channel}")
+                return True
+            else:
+                logger.error(f"[TwitchAdapter] Failed to fetch channel info for user {self.user_id}")
+                return False
+        except Exception as e:
+            logger.error(f"[TwitchAdapter] Error fetching channel info: {e}")
+            return False
+
     async def connect(self):
         """Connect to Twitch IRC"""
         while True:
@@ -90,6 +107,14 @@ class TwitchIRCClient:
                     logger.error("[TwitchAdapter] No token, retrying in 30s...")
                     await asyncio.sleep(30)
                     continue
+
+                # Fetch channel info before connecting
+                if not self.nickname or not self.channel:
+                    success = await self.fetch_channel_info()
+                    if not success:
+                        logger.error("[TwitchAdapter] Cannot connect without channel info, retrying in 30s...")
+                        await asyncio.sleep(30)
+                        continue
 
                 ssl_context = self._get_public_ssl_context()
                 self.reader, self.writer = await asyncio.open_connection(
@@ -109,7 +134,7 @@ class TwitchIRCClient:
                 await self.writer.drain()
 
                 self.is_connected = True
-                logger.info(f"[TwitchAdapter] Connected to Twitch IRC for user {self.user_id}")
+                logger.info(f"[TwitchAdapter] Connected to Twitch IRC for user {self.user_id} as {self.nickname}")
                 
                 # Wait for JOIN confirmation before marking as ready
                 await asyncio.sleep(2)
