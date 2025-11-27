@@ -1,5 +1,4 @@
 import asyncio
-import httpx
 import ssl
 from datetime import datetime, timedelta
 from sqlalchemy import select, text
@@ -10,6 +9,8 @@ import uuid
 from src.core.config import get_settings
 from src.core.logger import get_logger
 from src.core.db_session import get_db
+from src.schemas.chat import IncomingMessage
+from src.api.messages import receive_incoming_message
 
 logger = get_logger("TwitchAdapter")
 
@@ -173,17 +174,14 @@ class TwitchIRCClient:
 
                     logger.info(f"[TwitchAdapter] {username}: {msg_content}")
 
-                    async with httpx.AsyncClient() as client:
-                        await client.post(
-                            "http://localhost:8081/messages/incoming",
-                            json={
-                                "platform": "twitch",
-                                "user_id": self.user_id,
-                                "user_name": username,
-                                "content": msg_content,
-                                "message_id": message_id
-                            }
-                        )
+                    incoming_msg = IncomingMessage(
+                        platform="twitch",
+                        user_id=self.user_id,
+                        user_name=username,
+                        content=msg_content,
+                        message_id=message_id
+                    )
+                    await receive_incoming_message(incoming_msg)
             except Exception as e:
                 logger.error(f"[TwitchAdapter] Parse error: {e}")
 

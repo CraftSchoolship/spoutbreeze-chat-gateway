@@ -9,6 +9,8 @@ import hashlib
 from src.core.config import get_settings
 from src.core.logger import get_logger
 from src.core.db_session import get_db
+from src.schemas.chat import IncomingMessage
+from src.api.messages import receive_incoming_message
 
 logger = get_logger("YouTubeAdapter")
 
@@ -377,20 +379,17 @@ class YouTubeChatClient:
                     logger.info(f"[YouTubeAdapter] {username}: {text}")
 
                     # Send to gateway
-                    async with httpx.AsyncClient(timeout=5.0) as client:
-                        try:
-                            await client.post(
-                                "http://localhost:8081/messages/incoming",
-                                json={
-                                    "platform": "youtube",
-                                    "user_id": self.user_id,
-                                    "user_name": username,
-                                    "content": text,
-                                    "message_id": message_id
-                                }
-                            )
-                        except Exception as e:
-                            logger.error(f"[YouTubeAdapter] Failed to send to gateway: {e}")
+                    try:
+                        incoming_msg = IncomingMessage(
+                            platform="youtube",
+                            user_id=self.user_id,
+                            user_name=username,
+                            content=text,
+                            message_id=message_id
+                        )
+                        await receive_incoming_message(incoming_msg)
+                    except Exception as e:
+                        logger.error(f"[YouTubeAdapter] Failed to send to gateway: {e}")
 
                     # Cleanup old message IDs
                     if len(self._processed_message_ids) > 1000:
