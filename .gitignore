@@ -38,7 +38,7 @@ dmypy.json
 *.swo
 
 # Local environment files
-.env*
+.env
 .env.local
 .env.dev
 .env.prod
