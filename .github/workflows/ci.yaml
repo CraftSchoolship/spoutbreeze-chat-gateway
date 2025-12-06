@@ -24,7 +24,7 @@ jobs:
       - name: Extract version from pyproject.toml
         id: extract_version
         run: |
-          VERSION=$(python -c "import re; content=open('pyproject.toml').read(); match=re.search(r'version\s*=\s*[\"']([^\"']+)[\"']', content); print(match.group(1) if match else 'unknown')")
+          VERSION=$(grep -m1 'version = ' pyproject.toml | cut -d '"' -f 2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Generate metadata (tags, labels)
         id: meta
