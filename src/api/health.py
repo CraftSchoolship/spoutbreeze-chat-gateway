@@ -1,8 +1,6 @@
 from fastapi import APIRouter
-from sqlalchemy import text
 import logging
 
-from src.core.db_session import SessionLocal
 from src.core.websocket_manager import connected_count
 
 router = APIRouter(tags=["Health"])
@@ -24,13 +22,3 @@ async def root():
             "db_health": "/health/db",
         },
     }
-
-@router.get("/health/db")
-async def check_db_connection():
-    async with SessionLocal() as db:
-        try:
-            await db.execute(text("SELECT 1"))
-            return {"status": "healthy"}
-        except Exception as e:
-            logger.error(f"[DB Check] Connection failed: {e}")
-            return {"status": "unhealthy", "error": str(e)}
