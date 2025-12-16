@@ -1,14 +1,15 @@
 import asyncio
 import ssl
 from datetime import datetime, timedelta
-from sqlalchemy import select, text
+# from sqlalchemy import select, text
 from typing import Optional, Dict, Any
 import contextlib
 import uuid
 
 from src.core.config import get_settings
 from src.core.logger import get_logger
-from src.core.db_session import get_db
+# from src.core.db_session import get_db
+from src.core.token_fetcher import fetch_twitch_token
 from src.schemas.chat import IncomingMessage
 from src.api.messages import receive_incoming_message
 from src.services.twitch_profile_service import get_twitch_channel_info
@@ -54,34 +55,51 @@ class TwitchIRCClient:
         return ssl.create_default_context()
 
     async def get_active_token(self) -> str:
-        """Get token from shared DB using raw SQL"""
+        """Get token via internal API (token_fetcher)"""
         try:
-            user_uuid = str(uuid.UUID(self.user_id))
-
-            async for db in get_db():
-                query = text("""
-                    SELECT access_token, expires_at 
-                    FROM twitch_tokens 
-                    WHERE user_id = :user_id 
-                    AND is_active = true 
-                    AND expires_at > NOW()
-                    ORDER BY created_at DESC 
-                    LIMIT 1
-                """)
-                
-                result = await db.execute(query, {"user_id": user_uuid})
-                row = result.first()
-                
-                if row:
-                    logger.info(f"[TwitchAdapter] Token loaded for user {self.user_id}")
-                    return row[0]
-                else:
-                    logger.error(f"[TwitchAdapter] No valid token for user {self.user_id}")
-                    raise Exception("No valid token")
+            token_data = await fetch_twitch_token(self.user_id)
+            
+            if token_data and token_data.get("access_token"):
+                logger.info(f"[TwitchAdapter] Token loaded for user {self.user_id}")
+                return token_data["access_token"]
+            else:
+                logger.error(f"[TwitchAdapter] No valid token for user {self.user_id}")
+                raise Exception("No valid token")
             
         except Exception as e:
             logger.error(f"[TwitchAdapter] Token fetch error: {e}")
             raise
+
+    # COMMENTED OUT: Old raw SQL implementation
+    # async def get_active_token_raw_sql(self) -> str:
+    #     """Get token from shared DB using raw SQL"""
+    #     try:
+    #         user_uuid = str(uuid.UUID(self.user_id))
+    #
+    #         async for db in get_db():
+    #             query = text("""
+    #                 SELECT access_token, expires_at 
+    #                 FROM twitch_tokens 
+    #                 WHERE user_id = :user_id 
+    #                 AND is_active = true 
+    #                 AND expires_at > NOW()
+    #                 ORDER BY created_at DESC 
+    #                 LIMIT 1
+    #             """)
+    #             
+    #             result = await db.execute(query, {"user_id": user_uuid})
+    #             row = result.first()
+    #             
+    #             if row:
+    #                 logger.info(f"[TwitchAdapter] Token loaded for user {self.user_id}")
+    #                 return row[0]
+    #             else:
+    #                 logger.error(f"[TwitchAdapter] No valid token for user {self.user_id}")
+    #                 raise Exception("No valid token")
+    #         
+    #     except Exception as e:
+    #         logger.error(f"[TwitchAdapter] Token fetch error: {e}")
+    #         raise
 
     async def fetch_channel_info(self):
         """Fetch nickname and channel from Twitch API"""

@@ -1,14 +1,15 @@
 import asyncio
 import httpx
 from datetime import datetime, timedelta
-from sqlalchemy import text
+# from sqlalchemy import text
 from typing import Optional, Dict, Any, List
 import uuid
 import hashlib
 
 from src.core.config import get_settings
 from src.core.logger import get_logger
-from src.core.db_session import get_db
+# from src.core.db_session import get_db
+from src.core.token_fetcher import fetch_youtube_token
 from src.schemas.chat import IncomingMessage
 from src.api.messages import receive_incoming_message
 
@@ -41,34 +42,55 @@ class YouTubeChatClient:
         return self._http_client
 
     async def get_active_token(self) -> tuple[str, Optional[str], Optional[datetime]]:
-        """Get token from shared DB using raw SQL"""
+        """Get token via internal API (token_fetcher)"""
         try:
-            user_uuid = str(uuid.UUID(self.user_id))
-
-            async for db in get_db():
-                query = text("""
-                    SELECT access_token, refresh_token, expires_at 
-                    FROM youtube_tokens 
-                    WHERE user_id = :user_id 
-                    AND is_active = true 
-                    AND expires_at > NOW()
-                    ORDER BY created_at DESC 
-                    LIMIT 1
-                """)
-                
-                result = await db.execute(query, {"user_id": user_uuid})
-                row = result.first()
-                
-                if row:
-                    logger.info(f"[YouTubeAdapter] Token loaded for user {self.user_id}")
-                    return row[0], row[1], row[2]
-                else:
-                    logger.error(f"[YouTubeAdapter] No valid token for user {self.user_id}")
-                    raise Exception("No valid token")
+            token_data = await fetch_youtube_token(self.user_id)
+            
+            if token_data and token_data.get("access_token"):
+                logger.info(f"[YouTubeAdapter] Token loaded for user {self.user_id}")
+                return (
+                    token_data["access_token"],
+                    token_data.get("refresh_token"),
+                    token_data.get("expires_at")
+                )
+            else:
+                logger.error(f"[YouTubeAdapter] No valid token for user {self.user_id}")
+                raise Exception("No valid token")
             
         except Exception as e:
             logger.error(f"[YouTubeAdapter] Token fetch error: {e}")
             raise
+
+    # COMMENTED OUT: Old raw SQL implementation
+    # async def get_active_token_raw_sql(self) -> tuple[str, Optional[str], Optional[datetime]]:
+    #     """Get token from shared DB using raw SQL"""
+    #     try:
+    #         user_uuid = str(uuid.UUID(self.user_id))
+    #
+    #         async for db in get_db():
+    #             query = text("""
+    #                 SELECT access_token, refresh_token, expires_at 
+    #                 FROM youtube_tokens 
+    #                 WHERE user_id = :user_id 
+    #                 AND is_active = true 
+    #                 AND expires_at > NOW()
+    #                 ORDER BY created_at DESC 
+    #                 LIMIT 1
+    #             """)
+    #             
+    #             result = await db.execute(query, {"user_id": user_uuid})
+    #             row = result.first()
+    #             
+    #             if row:
+    #                 logger.info(f"[YouTubeAdapter] Token loaded for user {self.user_id}")
+    #                 return row[0], row[1], row[2]
+    #             else:
+    #                 logger.error(f"[YouTubeAdapter] No valid token for user {self.user_id}")
+    #                 raise Exception("No valid token")
+    #         
+    #     except Exception as e:
+    #         logger.error(f"[YouTubeAdapter] Token fetch error: {e}")
+    #         raise
 
     async def refresh_token_if_needed(self) -> bool:
         """Check if token is expired/expiring and refresh if needed"""
@@ -131,31 +153,44 @@ class YouTubeChatClient:
         expires_at: datetime,
     ):
         """Save refreshed token back to database"""
-        try:
-            user_uuid = str(uuid.UUID(self.user_id))
-
-            async for db in get_db():
-                update_query = text("""
-                    UPDATE youtube_tokens 
-                    SET access_token = :access_token,
-                        expires_at = :expires_at,
-                        refresh_token = :refresh_token,
-                        updated_at = NOW()
-                    WHERE user_id = :user_id 
-                    AND is_active = true
-                """)
-                
-                await db.execute(update_query, {
-                    "access_token": access_token,
-                    "expires_at": expires_at,
-                    "refresh_token": refresh_token,
-                    "user_id": user_uuid
-                })
-                await db.commit()
-                logger.debug(f"[YouTubeAdapter] Token updated in DB for user {self.user_id}")
-                break
-        except Exception as e:
-            logger.error(f"[YouTubeAdapter] Failed to save token: {e}")
+        # TODO: Implement update endpoint in backend internal API
+        # For now, refreshed tokens are kept in memory only
+        logger.warning(f"[YouTubeAdapter] Token refresh persistence not implemented - using in-memory token for user {self.user_id}")
+        pass
+        
+    # COMMENTED OUT: Old raw SQL implementation
+    # async def _save_refreshed_token_raw_sql(
+    #     self,
+    #     access_token: str,
+    #     refresh_token: Optional[str],
+    #     expires_at: datetime,
+    # ):
+    #     """Save refreshed token back to database"""
+    #     try:
+    #         user_uuid = str(uuid.UUID(self.user_id))
+    #
+    #         async for db in get_db():
+    #             update_query = text("""
+    #                 UPDATE youtube_tokens 
+    #                 SET access_token = :access_token,
+    #                     expires_at = :expires_at,
+    #                     refresh_token = :refresh_token,
+    #                     updated_at = NOW()
+    #                 WHERE user_id = :user_id 
+    #                 AND is_active = true
+    #             """)
+    #             
+    #             await db.execute(update_query, {
+    #                 "access_token": access_token,
+    #                 "expires_at": expires_at,
+    #                 "refresh_token": refresh_token,
+    #                 "user_id": user_uuid
+    #             })
+    #             await db.commit()
+    #             logger.debug(f"[YouTubeAdapter] Token updated in DB for user {self.user_id}")
+    #             break
+    #     except Exception as e:
+    #         logger.error(f"[YouTubeAdapter] Failed to save token: {e}")
 
     async def _make_api_request(
         self,
