@@ -48,10 +48,19 @@ class YouTubeChatClient:
             
             if token_data and token_data.get("access_token"):
                 logger.info(f"[YouTubeAdapter] Token loaded for user {self.user_id}")
+                
+                # Parse expires_at from ISO format string to datetime
+                expires_at = None
+                if token_data.get("expires_at"):
+                    try:
+                        expires_at = datetime.fromisoformat(token_data["expires_at"])
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"[YouTubeAdapter] Failed to parse expires_at: {e}")
+                
                 return (
                     token_data["access_token"],
                     token_data.get("refresh_token"),
-                    token_data.get("expires_at")
+                    expires_at
                 )
             else:
                 logger.error(f"[YouTubeAdapter] No valid token for user {self.user_id}")
@@ -303,7 +312,7 @@ class YouTubeChatClient:
             )
 
             self.next_page_token = data.get("nextPageToken")
-            self.polling_interval = data.get("pollingIntervalMillis", 5000) / 1000
+            self.polling_interval = max(data.get("pollingIntervalMillis", 5000) / 1000, 5)
             return data.get("items", [])
 
         except Exception as e:

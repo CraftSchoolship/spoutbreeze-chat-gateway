@@ -49,13 +49,13 @@ async def disconnect_twitch(user_id: str, x_internal_auth: str = Header(None, al
 async def connect_youtube(user_id: str, x_internal_auth: str = Header(None, alias="X-Internal-Auth")):
     _ensure_internal(x_internal_auth)
     
-    # Fetch token from backend
+    # Fetch token from backend to verify it exists
     token_data = await fetch_youtube_token(user_id)
     if not token_data:
         raise HTTPException(status_code=404, detail="No YouTube token found for user")
     
-    # Start connection with token
-    await youtube_service.start_connection_for_user(user_id, token_data["access_token"])
+    # Start connection (token will be fetched automatically by the client)
+    await youtube_service.start_connection_for_user(user_id)
     logger.info(f"[Platforms] YouTube connected for user {user_id}")
     return {"status": "connecting", "platform": "youtube", "user_id": user_id}
 
@@ -78,6 +78,6 @@ async def connect_youtube_with_chat_id(
     if not token_data:
         raise HTTPException(status_code=404, detail="No YouTube token found for user")
     
-    await youtube_service.start_with_chat_id(user_id, live_chat_id, token_data["access_token"])
+    await youtube_service.start_with_chat_id(user_id, live_chat_id)
     logger.info(f"[Platforms] YouTube connected with chat_id for user {user_id}")
     return {"status": "connecting", "platform": "youtube", "user_id": user_id, "chat_id": live_chat_id}
