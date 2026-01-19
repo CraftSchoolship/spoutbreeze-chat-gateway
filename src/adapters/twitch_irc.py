@@ -1,14 +1,9 @@
 import asyncio
 import ssl
-from datetime import datetime, timedelta
-# from sqlalchemy import select, text
-from typing import Optional, Dict, Any
 import contextlib
-import uuid
 
 from src.core.config import get_settings
 from src.core.logger import get_logger
-# from src.core.db_session import get_db
 from src.core.token_fetcher import fetch_twitch_token
 from src.schemas.chat import IncomingMessage
 from src.api.messages import receive_incoming_message
@@ -24,8 +19,8 @@ class TwitchIRCClient:
         self.access_token = access_token
         self.server = "irc.chat.twitch.tv"
         self.port = 6697
-        self.nickname = None  # Will be fetched from Twitch API
-        self.channel = None  # Will be fetched from Twitch API
+        self.nickname = None
+        self.channel = None
         self.reader = None
         self.writer = None
         self.token = None
@@ -70,37 +65,6 @@ class TwitchIRCClient:
             logger.error(f"[TwitchAdapter] Token fetch error: {e}")
             raise
 
-    # COMMENTED OUT: Old raw SQL implementation
-    # async def get_active_token_raw_sql(self) -> str:
-    #     """Get token from shared DB using raw SQL"""
-    #     try:
-    #         user_uuid = str(uuid.UUID(self.user_id))
-    #
-    #         async for db in get_db():
-    #             query = text("""
-    #                 SELECT access_token, expires_at 
-    #                 FROM twitch_tokens 
-    #                 WHERE user_id = :user_id 
-    #                 AND is_active = true 
-    #                 AND expires_at > NOW()
-    #                 ORDER BY created_at DESC 
-    #                 LIMIT 1
-    #             """)
-    #             
-    #             result = await db.execute(query, {"user_id": user_uuid})
-    #             row = result.first()
-    #             
-    #             if row:
-    #                 logger.info(f"[TwitchAdapter] Token loaded for user {self.user_id}")
-    #                 return row[0]
-    #             else:
-    #                 logger.error(f"[TwitchAdapter] No valid token for user {self.user_id}")
-    #                 raise Exception("No valid token")
-    #         
-    #     except Exception as e:
-    #         logger.error(f"[TwitchAdapter] Token fetch error: {e}")
-    #         raise
-
     async def fetch_channel_info(self):
         """Fetch nickname and channel from Twitch API"""
         try:
@@ -126,7 +90,6 @@ class TwitchIRCClient:
                     await asyncio.sleep(30)
                     continue
 
-                # Fetch channel info before connecting
                 if not self.nickname or not self.channel:
                     success = await self.fetch_channel_info()
                     if not success:
@@ -139,13 +102,11 @@ class TwitchIRCClient:
                     self.server, self.port, ssl=ssl_context
                 )
 
-                # Request capabilities for better IRC features
                 self.writer.write(b"CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands\r\n")
                 self.writer.write(f"PASS oauth:{self.access_token}\r\n".encode())
                 self.writer.write(f"NICK {self.nickname}\r\n".encode())
                 await self.writer.drain()
                 
-                # Wait for server greeting
                 await asyncio.sleep(1)
                 
                 self.writer.write(f"JOIN {self.channel}\r\n".encode())
@@ -154,7 +115,6 @@ class TwitchIRCClient:
                 self.is_connected = True
                 logger.info(f"[TwitchAdapter] Connected to Twitch IRC for user {self.user_id} as {self.nickname}")
                 
-                # Wait for JOIN confirmation before marking as ready
                 await asyncio.sleep(2)
                 self.is_ready = True
                 logger.info(f"[TwitchAdapter] Ready to send messages in {self.channel}")
@@ -182,7 +142,6 @@ class TwitchIRCClient:
                     await self.writer.drain()
                     continue
 
-                # Check for successful JOIN
                 if f"JOIN {self.channel}" in msg and self.nickname in msg:
                     self.is_ready = True
                     logger.info(f"[TwitchAdapter] Successfully joined {self.channel}")
