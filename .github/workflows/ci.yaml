@@ -72,8 +72,7 @@ jobs:
       
       - name: Update Image Tag
         run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && sudo chmod +x /usr/bin/yq
-          yq -i '.image.tag = "${{ needs.build-and-push-image.outputs.image_tag }}"' spoutbreeze/chat-gateway/values.yaml
+          sed -i 's/^\(\s*tag:\s*\)".*"/\1"${{ needs.build-and-push-image.outputs.image_tag }}"/' spoutbreeze/chat-gateway/values.yaml
 
       - name: Create Branch and Push
         env:
