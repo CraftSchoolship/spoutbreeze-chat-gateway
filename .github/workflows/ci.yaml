@@ -14,7 +14,7 @@ jobs:
   build-and-push-image:
     runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.extract_version.outputs.version }}
+      image_tag: ${{ steps.tag.outputs.image_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,18 +24,17 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract version from pyproject.toml
-        id: extract_version
+      - name: Set image tag
+        id: tag
         run: |
-          VERSION=$(grep -m1 'version = ' pyproject.toml | cut -d '"' -f 2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "image_tag=v$(date +%Y%m%d)-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
       - name: Generate metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v5.7.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ steps.extract_version.outputs.version }}
+            type=raw,value=${{ steps.tag.outputs.image_tag }}
             type=raw,value=latest
       - name: Build and push Docker image
         uses: docker/build-push-action@v6.15.0
