@@ -3,6 +3,7 @@ import logging
 
 from src.core.config import get_settings
 from src.core.token_fetcher import fetch_twitch_token, fetch_youtube_token
+from src.services.facebook_service import facebook_service
 from src.services.twitch_service import twitch_service
 from src.services.youtube_service import youtube_service
 
@@ -86,3 +87,41 @@ async def connect_youtube_with_chat_id(
     await youtube_service.start_with_chat_id(user_id, live_chat_id, meeting_id)
     logger.info(f"[Platforms] YouTube connected with chat_id for user {user_id}")
     return {"status": "connecting", "platform": "youtube", "user_id": user_id, "chat_id": live_chat_id}
+
+
+@router.post("/platforms/facebook/connect")
+async def connect_facebook(
+    user_id: str,
+    meeting_id: str,
+    live_stream_id: str,
+    live_video_id: str | None = None,
+    target: str = "me",
+    x_internal_auth: str = Header(None, alias="X-Internal-Auth"),
+):
+    _ensure_internal(x_internal_auth)
+
+    await facebook_service.start_connection_for_user(
+        user_id=user_id,
+        meeting_id=meeting_id,
+        live_stream_id=live_stream_id,
+        live_video_id=live_video_id,
+        target=target,
+    )
+    logger.info(f"[Platforms] Facebook connected for user {user_id}")
+    return {
+        "status": "connecting",
+        "platform": "facebook",
+        "user_id": user_id,
+        "meeting_id": meeting_id,
+        "live_stream_id": live_stream_id,
+        "live_video_id": live_video_id or live_stream_id,
+        "target": target,
+    }
+
+
+@router.post("/platforms/facebook/disconnect")
+async def disconnect_facebook(user_id: str, x_internal_auth: str = Header(None, alias="X-Internal-Auth")):
+    _ensure_internal(x_internal_auth)
+    await facebook_service.stop_connection_for_user(user_id)
+    logger.info(f"[Platforms] Facebook disconnected for user {user_id}")
+    return {"status": "disconnected", "platform": "facebook", "user_id": user_id}

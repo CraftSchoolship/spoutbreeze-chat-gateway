@@ -43,3 +43,23 @@ async def fetch_youtube_token(user_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"[TokenFetch] Failed to fetch YouTube token: {e}")
         return None
+
+
+async def fetch_facebook_stream_token(meeting_id: str, target: str = "me") -> Optional[Dict[str, Any]]:
+    """Fetch Facebook token for a meeting/target from backend streaming endpoint."""
+    url = f"{_settings.BACKEND_URL}/api/streaming/facebook/token/{meeting_id}"
+    headers = {"X-Internal-Auth": _settings.CHAT_GATEWAY_SHARED_SECRET}
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(url, headers=headers, params={"target": target})
+            if response.status_code == 404:
+                logger.warning(f"[TokenFetch] No Facebook token for meeting={meeting_id}, target={target}")
+                return None
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"[TokenFetch] Successfully fetched Facebook token for meeting={meeting_id}, target={target}")
+            return data
+    except Exception as e:
+        logger.error(f"[TokenFetch] Failed to fetch Facebook token: {e}")
+        return None
