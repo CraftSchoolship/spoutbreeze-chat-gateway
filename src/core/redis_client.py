@@ -1,5 +1,5 @@
 import redis.asyncio as redis
-from typing import Optional, Dict
+from typing import Any, Optional, Dict
 import logging
 import json
 import time  # Add this import
@@ -57,16 +57,24 @@ async def delete_user_id_by_meeting(meeting_id: str) -> None:
 
 # ==================== Connection Registry ====================
 
-async def register_active_connection(user_id: str, platform: str, meeting_id: str = None) -> None:
+async def register_active_connection(
+    user_id: str,
+    platform: str,
+    meeting_id: str = None,
+    metadata: Dict[str, Any] | None = None,
+) -> None:
     """Register active platform connection in Redis"""
     r = await get_redis()
     key = _key_active_connections(platform)
-    
+
     connection_data = {
         "meeting_id": meeting_id or "unknown",
-        "timestamp": str(int(time.time()))  # FIXED: Use standard time.time()
+        "timestamp": str(int(time.time()))
     }
-    
+
+    if metadata:
+        connection_data.update(metadata)
+
     await r.hset(key, user_id, json.dumps(connection_data))
     logger.info(f"[Redis] Registered {platform} connection for user {user_id}")
 
@@ -105,7 +113,7 @@ async def clear_all_connections(platform: str = None) -> None:
         await r.delete(key)
         logger.info(f"[Redis] Cleared all {platform} connections")
     else:
-        for p in ["youtube", "twitch"]:
+        for p in ["youtube", "twitch", "facebook"]:
             key = _key_active_connections(p)
             await r.delete(key)
         logger.info(f"[Redis] Cleared all platform connections")

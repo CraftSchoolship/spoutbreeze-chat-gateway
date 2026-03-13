@@ -7,6 +7,7 @@ from src.api.websocket import router as websocket_router
 from src.api.messages import router as messages_router
 from src.api.platforms import router as platforms_router
 from src.api.health import router as health_router
+from src.services.facebook_service import facebook_service
 from src.services.youtube_service import youtube_service
 from src.services.twitch_service import twitch_service
 
@@ -44,6 +45,7 @@ async def startup():
     logger.info("[Gateway] Restoring platform connections...")
     await youtube_service.restore_connections()
     await twitch_service.restore_connections()
+    await facebook_service.restore_connections()
     logger.info("[Gateway] Connection restoration complete")
 
 
