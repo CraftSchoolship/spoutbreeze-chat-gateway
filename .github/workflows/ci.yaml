@@ -74,7 +74,7 @@ jobs:
         run: |
           sed -i 's/^\(\s*tag:\s*\)".*"/\1"${{ needs.build-and-push-image.outputs.image_tag }}"/' spoutbreeze/chat-gateway/values.yaml
 
-      - name: Create Branch and Push
+      - name: Create Branch and Push 
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
