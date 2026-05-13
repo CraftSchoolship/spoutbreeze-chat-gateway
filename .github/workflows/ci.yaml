@@ -3,7 +3,7 @@ on:
   push:
     branches:
       - main
-      - cicd
+      - cicd-enhance
     paths-ignore:
       - "README.md"
       - "LICENSE"
@@ -13,6 +13,7 @@ env:
 jobs:
   build-and-push-image:
     runs-on: ubuntu-latest
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     outputs:
       image_tag: ${{ steps.tag.outputs.image_tag }}
     steps:
@@ -49,7 +50,7 @@ jobs:
     name: Update Helm Charts
     runs-on: ubuntu-latest
     needs: [build-and-push-image]
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/cicd')
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     
     env:
       HELM_REPO: CraftSchoolship/deployment-configs
@@ -77,18 +78,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          BRANCH_NAME="update-image-tag-${{ needs.build-and-push-image.outputs.image_tag }}"
           git config --global user.email "bot@spoutbreeze.com"
           git config --global user.name "SpoutBreeze Bot"
           
-          git checkout -b "$BRANCH_NAME"
           git add spoutbreeze/chat-gateway/values.yaml
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
           git commit -m "chore: update spoutbreeze image to ${{ needs.build-and-push-image.outputs.image_tag }}"
-          git push origin "$BRANCH_NAME"
-
-          gh pr create \
-            --repo CraftSchoolship/deployment-configs \
-            --title "Deploy SpoutBreeze ${{ needs.build-and-push-image.outputs.image_tag }}" \
-            --body "Automated update from CI pipeline." \
-            --base main \
-            --head "$BRANCH_NAME"
+          git push origin main
